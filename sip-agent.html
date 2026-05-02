@@ -149,12 +149,12 @@ body{font-family:'Lato',sans-serif;background:var(--paper);color:var(--ink);font
     <div class="key-sub">Faction Thesis — EPFL EMBA</div>
     <div class="key-label">Anthropic API Key</div>
     <input class="key-input" id="key-input" type="password" placeholder="sk-ant-api03-..." autocomplete="off" />
-    <div class="key-hint">
-      Your key is never stored — it lives in memory for this session only.<br>
-      Get your key at <a href="https://console.anthropic.com" target="_blank">console.anthropic.com</a> → API Keys.
-    </div>
+    <div class="key-hint">Get your key at <a href="https://console.anthropic.com" target="_blank">console.anthropic.com</a> → API Keys.</div>
+    <div class="key-label">Zotero API Key</div>
+    <input class="key-input" id="zotero-key-input" type="password" placeholder="your zotero api key..." autocomplete="off" />
+    <div class="key-hint" style="margin-bottom:24px;">Get your key at <a href="https://www.zotero.org/settings/keys" target="_blank">zotero.org/settings/keys</a> → Create new private key.<br>Keys are never stored — memory only.</div>
     <button class="key-btn" onclick="submitKey()">Start researching →</button>
-    <div class="key-err" id="key-err">Invalid key — make sure it starts with sk-ant-</div>
+    <div class="key-err" id="key-err">Please enter both keys to continue.</div>
   </div>
 </div>
 
@@ -245,6 +245,9 @@ body{font-family:'Lato',sans-serif;background:var(--paper);color:var(--ink);font
 
 <script>
 let API_KEY = '';
+let ZOTERO_KEY = '';
+const ZOTERO_USER_ID = '20434074';
+let ZOTERO_COLLECTION_KEY = '';
 
 const S = {
   results:[],savedZ:new Set(),savedO:new Set(),count:0,
@@ -281,19 +284,32 @@ const ctxMap={
 
 function submitKey(){
   const val=document.getElementById('key-input').value.trim();
-  if(!val.startsWith('sk-ant-')){document.getElementById('key-err').style.display='block';return;}
+  const zval=document.getElementById('zotero-key-input').value.trim();
+  if(!val.startsWith('sk-ant-')||!zval){document.getElementById('key-err').style.display='block';return;}
   API_KEY=val;
+  ZOTERO_KEY=zval;
+  getZoteroCollectionKey();
   document.getElementById('key-screen').style.display='none';
   document.getElementById('app').classList.add('visible');
 }
 function resetKey(){
-  API_KEY='';
+  API_KEY='';ZOTERO_KEY='';ZOTERO_COLLECTION_KEY='';
   document.getElementById('key-input').value='';
+  document.getElementById('zotero-key-input').value='';
   document.getElementById('key-err').style.display='none';
   document.getElementById('key-screen').style.display='flex';
   document.getElementById('app').classList.remove('visible');
 }
+async function getZoteroCollectionKey(){
+  try{
+    const res=await fetch(`https://api.zotero.org/users/${ZOTERO_USER_ID}/collections`,{headers:{'Zotero-API-Key':ZOTERO_KEY}});
+    const data=await res.json();
+    const col=data.find(c=>c.data.name==='SIP');
+    if(col)ZOTERO_COLLECTION_KEY=col.key;
+  }catch(e){console.log('Could not fetch Zotero collections',e);}
+}
 document.getElementById('key-input').addEventListener('keydown',e=>{if(e.key==='Enter')submitKey();});
+document.getElementById('zotero-key-input').addEventListener('keydown',e=>{if(e.key==='Enter')submitKey();});
 
 function renderPhases(){
   document.getElementById('phasenav').innerHTML=S.phases.map((p,i)=>`
@@ -414,11 +430,35 @@ function card(p,i){
   </div>`;
 }
 
-function saveZ(i){
+async function saveZ(i){
   S.savedZ.add(i);
   const p=S.results[i];
   S.inbox.unshift({t:`${p.authors.split(/[,&]/)[0].trim()} (${p.year}) — ${p.title.slice(0,42)}…`,done:false});
-  renderInbox();renderResults();toast('Added to Zotero inbox');
+  renderInbox();renderResults();
+  // Save to Zotero via API
+  try{
+    const item={
+      itemType:'journalArticle',
+      title:p.title,
+      creators:[{creatorType:'author',name:p.authors}],
+      abstractNote:p.abstract,
+      publicationTitle:p.journal,
+      date:String(p.year),
+      DOI:p.doi||'',
+      extra:`Citations: ${p.citations}\nSIP Relevance: ${p.sipRelevance}`,
+      collections:ZOTERO_COLLECTION_KEY?[ZOTERO_COLLECTION_KEY]:[],
+      tags:p.themes.map(t=>({tag:t})).concat([{tag:'sip/phase'+p.sipPhase},{tag:'status/inbox'}])
+    };
+    const res=await fetch(`https://api.zotero.org/users/${ZOTERO_USER_ID}/items`,{
+      method:'POST',
+      headers:{'Zotero-API-Key':ZOTERO_KEY,'Content-Type':'application/json'},
+      body:JSON.stringify([item])
+    });
+    if(res.ok){toast('✓ Saved to Zotero SIP collection');}
+    else{toast('Saved to inbox — check Zotero connection');}
+  }catch(e){
+    toast('Saved to inbox — Zotero offline');
+  }
 }
 
 async function genNote(i){
