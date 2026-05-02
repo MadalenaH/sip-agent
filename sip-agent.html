@@ -358,7 +358,7 @@ async function doSearch(){
   const ci=document.getElementById('fc').value;
   const ph=S.phases[S.activePhase];
   const sys=`You are an academic research assistant for an EPFL EMBA SIP thesis "Where Should Faction Play?" applying RBV, Dynamic Capabilities, and the Market Opportunity Navigator (Gruber) to help The Faction Collective transition from seasonal to year-round operations.
-Return ONLY a valid JSON array of 5 objects. No markdown, no preamble.
+Return ONLY a valid JSON array of 10 objects. No markdown, no preamble.
 Each object: {"title":"...","authors":"Last, F. & Last, F.","year":2020,"journal":"...","citations":150,"abstract":"2-3 sentences","type":"empirical|review|theoretical|case-study","themes":["T1","T2"],"sipPhase":1,"sipRelevance":"One precise sentence for Faction thesis","quoteHint":"Where to find key quote e.g. Introduction p.2","doi":"10.x/x or empty"}
 Constraints: ${yr?'year>='+yr:'any year'}, ${ci?'citations>='+ci:'any citations'}, types: ${types.join(',')||'any'}.
 Phase: ${ph.label} — ${ph.sub}. Context: ${ctxTerms||'strategic management'}.
@@ -367,7 +367,7 @@ Real citable papers only.`;
     const res=await fetch('https://api.anthropic.com/v1/messages',{
       method:'POST',
       headers:{'Content-Type':'application/json','x-api-key':API_KEY,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
-      body:JSON.stringify({model:'claude-sonnet-4-5',max_tokens:1000,system:sys,messages:[{role:'user',content:`Find papers on: ${raw}`}]})
+      body:JSON.stringify({model:'claude-sonnet-4-5',max_tokens:4000,system:sys,messages:[{role:'user',content:`Find 10 academic papers on: ${raw}`}]})
     });
     if(res.status===401){
       document.getElementById('main').innerHTML=`<div class="empty"><em>Invalid API key</em>Click "change key" in the header.</div>`;
@@ -453,7 +453,7 @@ Include:
     const res=await fetch('https://api.anthropic.com/v1/messages',{
       method:'POST',
       headers:{'Content-Type':'application/json','x-api-key':API_KEY,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
-      body:JSON.stringify({model:'claude-sonnet-4-5',max_tokens:1000,system:sys,messages:[{role:'user',content:prompt}]})
+      body:JSON.stringify({model:'claude-sonnet-4-5',max_tokens:4000,system:sys,messages:[{role:'user',content:prompt}]})
     });
     const data=await res.json();
     const note=data.content?.find(b=>b.type==='text')?.text||'';
@@ -487,3 +487,4 @@ renderTax();renderInbox();renderPhases();
 </script>
 </body>
 </html>
+
