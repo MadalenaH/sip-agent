@@ -367,7 +367,7 @@ Real citable papers only.`;
     const res=await fetch('https://api.anthropic.com/v1/messages',{
       method:'POST',
       headers:{'Content-Type':'application/json','x-api-key':API_KEY,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
-      body:JSON.stringify({model:'claude-sonnet-4-5',max_tokens:4000,system:sys,messages:[{role:'user',content:`Find 10 academic papers on: ${raw}`}]})
+      body:JSON.stringify({model:'claude-sonnet-4-5',max_tokens:8000,system:sys,messages:[{role:'user',content:`Find 10 academic papers on: ${raw}`}]})
     });
     if(res.status===401){
       document.getElementById('main').innerHTML=`<div class="empty"><em>Invalid API key</em>Click "change key" in the header.</div>`;
@@ -453,7 +453,7 @@ Include:
     const res=await fetch('https://api.anthropic.com/v1/messages',{
       method:'POST',
       headers:{'Content-Type':'application/json','x-api-key':API_KEY,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
-      body:JSON.stringify({model:'claude-sonnet-4-5',max_tokens:4000,system:sys,messages:[{role:'user',content:prompt}]})
+      body:JSON.stringify({model:'claude-sonnet-4-5',max_tokens:8000,system:sys,messages:[{role:'user',content:prompt}]})
     });
     const data=await res.json();
     const note=data.content?.find(b=>b.type==='text')?.text||'';
@@ -487,4 +487,3 @@ renderTax();renderInbox();renderPhases();
 </script>
 </body>
 </html>
-
