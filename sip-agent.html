@@ -566,15 +566,20 @@ Include:
     const note=data.content?.find(b=>b.type==='text')?.text||'';
     if(!note){S.generatingNote.delete(i);renderResults();toast('Empty note — try again');return;}
     S.generatingNote.delete(i);S.savedO.add(i);
-    // Try to push directly to Obsidian
+    // Try to push directly to Obsidian (isolated — never blocks note display)
     if(OBSIDIAN_KEY){
-      const pushed=await pushToObsidian(p.title,note);
-      if(pushed){
-        toast('✓ Saved to Obsidian — '+OBSIDIAN_FOLDER+'/');
-        renderResults();return;
-      }else{
+      try{
+        const pushed=await pushToObsidian(p.title,note);
+        if(pushed){
+          toast('✓ Saved to Obsidian — '+OBSIDIAN_FOLDER+'/');
+          renderResults();return;
+        }else{
+          checkObsidianConn();
+          toast('Obsidian push failed — opening copy modal');
+        }
+      }catch(obsErr){
         checkObsidianConn();
-        toast('Obsidian push failed — opening copy modal');
+        toast('Obsidian unreachable — trust cert first');
       }
     }
     // Fallback: show copy modal
