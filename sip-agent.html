@@ -557,7 +557,14 @@ Include:
       body:JSON.stringify({model:'claude-opus-4-5',max_tokens:8000,system:sys,messages:[{role:'user',content:prompt}]})
     });
     const data=await res.json();
+    if(!res.ok){
+      const errMsg=data.error?.message||`HTTP ${res.status}`;
+      S.generatingNote.delete(i);renderResults();
+      toast('Note failed: '+errMsg.slice(0,80));
+      return;
+    }
     const note=data.content?.find(b=>b.type==='text')?.text||'';
+    if(!note){S.generatingNote.delete(i);renderResults();toast('Empty note — try again');return;}
     S.generatingNote.delete(i);S.savedO.add(i);
     // Try to push directly to Obsidian
     if(OBSIDIAN_KEY){
@@ -566,15 +573,15 @@ Include:
         toast('✓ Saved to Obsidian — '+OBSIDIAN_FOLDER+'/');
         renderResults();return;
       }else{
-        // Connection failed mid-session — recheck and fall back to modal
         checkObsidianConn();
-        toast('Obsidian push failed — check connection');
+        toast('Obsidian push failed — opening copy modal');
       }
     }
     // Fallback: show copy modal
     showModal(p.title,note);renderResults();
   }catch(e){
-    S.generatingNote.delete(i);renderResults();toast('Note generation failed');
+    S.generatingNote.delete(i);renderResults();
+    toast('Note failed: '+(e.message||'network error').slice(0,80));
   }
 }
 
