@@ -436,20 +436,28 @@ Real citable papers only.`;
     const res=await fetch('https://api.anthropic.com/v1/messages',{
       method:'POST',
       headers:{'Content-Type':'application/json','x-api-key':API_KEY,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
-      body:JSON.stringify({model:'claude-sonnet-4-5',max_tokens:8000,system:sys,messages:[{role:'user',content:`Find 7 academic papers on: ${raw}`}]})
+      body:JSON.stringify({model:'claude-opus-4-5',max_tokens:8000,system:sys,messages:[{role:'user',content:`Find 7 academic papers on: ${raw}`}]})
     });
-    if(res.status===401){
-      document.getElementById('main').innerHTML=`<div class="empty"><em>Invalid API key</em>Click "change key" in the header.</div>`;
+    const data=await res.json();
+    if(!res.ok){
+      const errMsg=data.error?.message||data.type||`HTTP ${res.status}`;
+      document.getElementById('main').innerHTML=`<div class="empty"><em>${res.status===401?'Invalid API key':'API error'}</em>${esc(errMsg)}</div>`;
       btn.disabled=false;btn.textContent='Search ↗';return;
     }
-    const data=await res.json();
-    const txt=data.content?.find(b=>b.type==='text')?.text||'[]';
-    S.results=JSON.parse(txt.replace(/```json|```/g,'').trim());
+    const txt=data.content?.find(b=>b.type==='text')?.text||'';
+    if(!txt){
+      document.getElementById('main').innerHTML=`<div class="empty"><em>Empty response</em>Try again.</div>`;
+      btn.disabled=false;btn.textContent='Search ↗';return;
+    }
+    // Extract JSON — handle fenced or bare
+    const match=txt.match(/```(?:json)?\s*([\s\S]*?)```/)||[null,txt];
+    S.results=JSON.parse(match[1].trim());
+    if(!Array.isArray(S.results))S.results=[];
     S.count+=S.results.length;
     document.getElementById('pill-cnt').textContent=S.count+' papers indexed';
     renderResults();
   }catch(e){
-    document.getElementById('main').innerHTML=`<div class="empty"><em>Search failed</em>${e.message||'Check connection.'}</div>`;
+    document.getElementById('main').innerHTML=`<div class="empty"><em>Search failed</em>${esc(e.message||'Check connection and try again.')}</div>`;
   }
   btn.disabled=false;btn.textContent='Search ↗';
 }
@@ -546,7 +554,7 @@ Include:
     const res=await fetch('https://api.anthropic.com/v1/messages',{
       method:'POST',
       headers:{'Content-Type':'application/json','x-api-key':API_KEY,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
-      body:JSON.stringify({model:'claude-sonnet-4-5',max_tokens:8000,system:sys,messages:[{role:'user',content:prompt}]})
+      body:JSON.stringify({model:'claude-opus-4-5',max_tokens:8000,system:sys,messages:[{role:'user',content:prompt}]})
     });
     const data=await res.json();
     const note=data.content?.find(b=>b.type==='text')?.text||'';
