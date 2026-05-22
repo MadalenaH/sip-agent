@@ -152,9 +152,13 @@ body{font-family:'Lato',sans-serif;background:var(--paper);color:var(--ink);font
     <div class="key-hint">Get your key at <a href="https://console.anthropic.com" target="_blank">console.anthropic.com</a> → API Keys.</div>
     <div class="key-label">Zotero API Key</div>
     <input class="key-input" id="zotero-key-input" type="password" placeholder="your zotero api key..." autocomplete="off" />
-    <div class="key-hint" style="margin-bottom:24px;">Get your key at <a href="https://www.zotero.org/settings/keys" target="_blank">zotero.org/settings/keys</a> → Create new private key.<br>Keys are never stored — memory only.</div>
+    <div class="key-hint">Get your key at <a href="https://www.zotero.org/settings/keys" target="_blank">zotero.org/settings/keys</a> → Create new private key.</div>
+    <div class="key-label">Obsidian API Key <span style="font-weight:400;color:var(--ink3)">(Local REST API plugin)</span></div>
+    <input class="key-input" id="obsidian-key-input" type="password" placeholder="your obsidian local rest api key..." autocomplete="off" />
+    <div class="key-hint" style="margin-bottom:6px;">Found in Obsidian → Settings → Local REST API. <a href="https://localhost:27124" target="_blank" onclick="setTimeout(checkObsidianConn,2000)">Trust cert first ↗</a></div>
+    <div class="key-hint" style="margin-bottom:24px;color:var(--ink3)">Keys are never stored — memory only.</div>
     <button class="key-btn" onclick="submitKey()">Start researching →</button>
-    <div class="key-err" id="key-err">Please enter both keys to continue.</div>
+    <div class="key-err" id="key-err">Please enter Anthropic and Zotero keys to continue.</div>
   </div>
 </div>
 
@@ -174,7 +178,7 @@ body{font-family:'Lato',sans-serif;background:var(--paper);color:var(--ink);font
   <div class="status">
     <span class="pill pg">● Scholar ready</span>
     <span class="pill pa">◎ Zotero: manual sync</span>
-    <span class="pill pg">● Obsidian connected</span>
+    <span class="pill pn" id="pill-obsidian">◌ Obsidian checking…</span>
     <span class="pill pn" id="pill-cnt">0 papers indexed</span>
   </div>
 
@@ -228,7 +232,7 @@ body{font-family:'Lato',sans-serif;background:var(--paper);color:var(--ink);font
       <div class="ssec">
         <div class="slbl">Zotero inbox</div>
         <div id="inbox"></div>
-        <button class="btn-xs" onclick="alert('Open Obsidian → Cmd+P → Zotero Integration: SIP Literature Note')">Export → Obsidian ↗</button>
+        <button class="btn-xs" onclick="exportInboxToObsidian()">Export inbox → Obsidian ↗</button>
       </div>
       <div class="ssec">
         <div class="slbl">SIP phases</div>
@@ -246,8 +250,53 @@ body{font-family:'Lato',sans-serif;background:var(--paper);color:var(--ink);font
 <script>
 let API_KEY = '';
 let ZOTERO_KEY = '';
+let OBSIDIAN_KEY = '';
 const ZOTERO_USER_ID = '20434074';
 let ZOTERO_COLLECTION_KEY = '';
+const OBSIDIAN_PORT = 27124;
+const OBSIDIAN_FOLDER = 'SIP Research';
+
+// ── Obsidian connection ──────────────────────────────────────────────────────
+
+async function checkObsidianConn() {
+  const pill = document.getElementById('pill-obsidian');
+  if (!OBSIDIAN_KEY) {
+    if (pill) { pill.textContent = '○ Obsidian: no key'; pill.className = 'pill pn'; }
+    return false;
+  }
+  try {
+    const res = await fetch(`https://localhost:${OBSIDIAN_PORT}/`, {
+      headers: { 'Authorization': `Bearer ${OBSIDIAN_KEY}` }
+    });
+    if (res.ok) {
+      if (pill) { pill.textContent = '● Obsidian connected'; pill.className = 'pill pg'; }
+      return true;
+    }
+  } catch (e) {
+    // likely cert not trusted yet
+  }
+  if (pill) {
+    pill.innerHTML = '⚠ Obsidian: <a href="https://localhost:' + OBSIDIAN_PORT + '" target="_blank" style="color:inherit;text-decoration:underline" onclick="setTimeout(checkObsidianConn,2500)">trust cert ↗</a>';
+    pill.className = 'pill pa';
+  }
+  return false;
+}
+
+async function pushToObsidian(title, content) {
+  const safe = title.replace(/[\\/:*?"<>|#^[\]]/g, '-').slice(0, 100).trim();
+  const path = `${OBSIDIAN_FOLDER}/${safe}.md`;
+  const res = await fetch(`https://localhost:${OBSIDIAN_PORT}/vault/${encodeURIComponent(path)}`, {
+    method: 'PUT',
+    headers: {
+      'Authorization': `Bearer ${OBSIDIAN_KEY}`,
+      'Content-Type': 'text/markdown'
+    },
+    body: content
+  });
+  return res.ok;
+}
+
+// ── App state ────────────────────────────────────────────────────────────────
 
 const S = {
   results:[],savedZ:new Set(),savedO:new Set(),count:0,
@@ -285,17 +334,21 @@ const ctxMap={
 function submitKey(){
   const val=document.getElementById('key-input').value.trim();
   const zval=document.getElementById('zotero-key-input').value.trim();
+  const oval=document.getElementById('obsidian-key-input').value.trim();
   if(!val.startsWith('sk-ant-')||!zval){document.getElementById('key-err').style.display='block';return;}
   API_KEY=val;
   ZOTERO_KEY=zval;
+  OBSIDIAN_KEY=oval;
   getZoteroCollectionKey();
   document.getElementById('key-screen').style.display='none';
   document.getElementById('app').classList.add('visible');
+  checkObsidianConn();
 }
 function resetKey(){
-  API_KEY='';ZOTERO_KEY='';ZOTERO_COLLECTION_KEY='';
+  API_KEY='';ZOTERO_KEY='';ZOTERO_COLLECTION_KEY='';OBSIDIAN_KEY='';
   document.getElementById('key-input').value='';
   document.getElementById('zotero-key-input').value='';
+  document.getElementById('obsidian-key-input').value='';
   document.getElementById('key-err').style.display='none';
   document.getElementById('key-screen').style.display='flex';
   document.getElementById('app').classList.remove('visible');
@@ -498,6 +551,19 @@ Include:
     const data=await res.json();
     const note=data.content?.find(b=>b.type==='text')?.text||'';
     S.generatingNote.delete(i);S.savedO.add(i);
+    // Try to push directly to Obsidian
+    if(OBSIDIAN_KEY){
+      const pushed=await pushToObsidian(p.title,note);
+      if(pushed){
+        toast('✓ Saved to Obsidian — '+OBSIDIAN_FOLDER+'/');
+        renderResults();return;
+      }else{
+        // Connection failed mid-session — recheck and fall back to modal
+        checkObsidianConn();
+        toast('Obsidian push failed — check connection');
+      }
+    }
+    // Fallback: show copy modal
     showModal(p.title,note);renderResults();
   }catch(e){
     S.generatingNote.delete(i);renderResults();toast('Note generation failed');
@@ -506,6 +572,22 @@ Include:
 
 function saveAll(){S.results.forEach((_,i)=>{if(!S.savedZ.has(i))saveZ(i);});renderResults();toast('All papers added to Zotero inbox');}
 
+async function exportInboxToObsidian(){
+  if(!OBSIDIAN_KEY){toast('Enter Obsidian key first — click "change key"');return;}
+  const pending=S.inbox.filter(item=>!item.done);
+  if(!pending.length){toast('No pending items in inbox');return;}
+  let ok=0;
+  for(const item of pending){
+    const content=`# ${item.t}\n\n> Exported from SIP Research Agent — ${new Date().toLocaleDateString()}\n\n## Notes\n\n`;
+    const pushed=await pushToObsidian(item.t,content);
+    if(pushed){item.done=true;S.count++;ok++;}
+  }
+  document.getElementById('pill-cnt').textContent=S.count+' papers indexed';
+  renderInbox();
+  if(ok)toast(`✓ ${ok} item${ok>1?'s':''} pushed to Obsidian`);
+  else{checkObsidianConn();toast('Push failed — check Obsidian connection');}
+}
+
 function showModal(title,content){
   const ex=document.getElementById('note-modal');if(ex)ex.remove();
   const m=document.createElement('div');
@@ -513,12 +595,20 @@ function showModal(title,content){
   m.innerHTML=`<div class="modal">
     <div class="modal-hdr"><span class="modal-title">Obsidian note — ready to copy</span><button class="modal-close" onclick="document.getElementById('note-modal').remove()">×</button></div>
     <div class="modal-body"><div class="modal-code">${esc(content)}</div></div>
-    <div class="modal-foot"><button class="btn-cancel" onclick="document.getElementById('note-modal').remove()">Close</button><button class="btn-copy" onclick="copyNote()">Copy to clipboard</button></div>
+    <div class="modal-foot"><button class="btn-cancel" onclick="document.getElementById('note-modal').remove()">Close</button><button class="btn-cancel" onclick="copyNote()">Copy to clipboard</button><button class="btn-copy" onclick="sendModalToObsidian()">Send to Obsidian ↗</button></div>
   </div>`;
   document.body.appendChild(m);
   m._content=content;
+  m._title=title;
 }
-function copyNote(){const m=document.getElementById('note-modal');if(!m)return;navigator.clipboard.writeText(m._content).then(()=>toast('Copied! Paste into Obsidian'));}
+function copyNote(){const m=document.getElementById('note-modal');if(!m)return;navigator.clipboard.writeText(m._content).then(()=>toast('Copied!'));}
+async function sendModalToObsidian(){
+  const m=document.getElementById('note-modal');if(!m)return;
+  if(!OBSIDIAN_KEY){toast('No Obsidian key — copy manually');return;}
+  const pushed=await pushToObsidian(m._title||'Untitled Note',m._content);
+  if(pushed){toast('✓ Saved to Obsidian');m.remove();}
+  else{checkObsidianConn();toast('Push failed — trust cert first');}
+}
 function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 function toast(msg){const el=document.getElementById('toast');el.textContent=msg;el.classList.add('show');setTimeout(()=>el.classList.remove('show'),2200);}
 
