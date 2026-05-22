@@ -260,25 +260,20 @@ const OBSIDIAN_FOLDER = 'SIP Research';
 
 async function checkObsidianConn() {
   const pill = document.getElementById('pill-obsidian');
-  if (!OBSIDIAN_KEY) {
-    if (pill) { pill.textContent = '○ Obsidian: no key'; pill.className = 'pill pn'; }
-    return false;
+  // Try REST API first
+  if (OBSIDIAN_KEY) {
+    try {
+      const res = await fetch(`https://localhost:${OBSIDIAN_PORT}/`, {
+        headers: { 'Authorization': `Bearer ${OBSIDIAN_KEY}` }
+      });
+      if (res.ok) {
+        if (pill) { pill.textContent = '● Obsidian connected'; pill.className = 'pill pg'; }
+        return true;
+      }
+    } catch (e) {}
   }
-  try {
-    const res = await fetch(`https://localhost:${OBSIDIAN_PORT}/`, {
-      headers: { 'Authorization': `Bearer ${OBSIDIAN_KEY}` }
-    });
-    if (res.ok) {
-      if (pill) { pill.textContent = '● Obsidian connected'; pill.className = 'pill pg'; }
-      return true;
-    }
-  } catch (e) {
-    // likely cert not trusted yet
-  }
-  if (pill) {
-    pill.innerHTML = '⚠ Obsidian: <a href="https://localhost:' + OBSIDIAN_PORT + '" target="_blank" style="color:inherit;text-decoration:underline" onclick="setTimeout(checkObsidianConn,2500)">trust cert ↗</a>';
-    pill.className = 'pill pa';
-  }
+  // REST API not available — URI scheme is the fallback (always works)
+  if (pill) { pill.textContent = '● Obsidian via URI'; pill.className = 'pill pg'; }
   return false;
 }
 
@@ -566,24 +561,18 @@ Include:
     const note=data.content?.find(b=>b.type==='text')?.text||'';
     if(!note){S.generatingNote.delete(i);renderResults();toast('Empty note — try again');return;}
     S.generatingNote.delete(i);S.savedO.add(i);
-    // Try to push directly to Obsidian (isolated — never blocks note display)
+    // Try direct REST API push (isolated)
     if(OBSIDIAN_KEY){
       try{
         const pushed=await pushToObsidian(p.title,note);
         if(pushed){
           toast('✓ Saved to Obsidian — '+OBSIDIAN_FOLDER+'/');
           renderResults();return;
-        }else{
-          checkObsidianConn();
-          toast('Obsidian push failed — opening copy modal');
         }
-      }catch(obsErr){
-        checkObsidianConn();
-        toast('Obsidian unreachable — trust cert first');
-      }
+      }catch(obsErr){}
     }
-    // Fallback: show copy modal
-    showModal(p.title,note);renderResults();
+    // Show modal with both copy and open-in-Obsidian options
+    showModal(p.title,note,p.title);renderResults();
   }catch(e){
     S.generatingNote.delete(i);renderResults();
     toast('Note failed: '+(e.message||'network error').slice(0,80));
@@ -608,14 +597,25 @@ async function exportInboxToObsidian(){
   else{checkObsidianConn();toast('Push failed — check Obsidian connection');}
 }
 
+function openInObsidian(title,content){
+  const safe=title.replace(/[\\/:*?"<>|#^[\]]/g,'-').slice(0,80).trim();
+  const filePath=OBSIDIAN_FOLDER+'/'+safe;
+  const uri='obsidian://new?vault=Obsidian%20Vault&file='+encodeURIComponent(filePath)+'&content='+encodeURIComponent(content)+'&overwrite=true';
+  window.open(uri,'_self');
+  toast('Opening in Obsidian…');
+}
 function showModal(title,content){
   const ex=document.getElementById('note-modal');if(ex)ex.remove();
   const m=document.createElement('div');
   m.id='note-modal';m.className='modal-bg';
   m.innerHTML=`<div class="modal">
-    <div class="modal-hdr"><span class="modal-title">Obsidian note — ready to copy</span><button class="modal-close" onclick="document.getElementById('note-modal').remove()">×</button></div>
+    <div class="modal-hdr"><span class="modal-title">Obsidian note — ready</span><button class="modal-close" onclick="document.getElementById('note-modal').remove()">×</button></div>
     <div class="modal-body"><div class="modal-code">${esc(content)}</div></div>
-    <div class="modal-foot"><button class="btn-cancel" onclick="document.getElementById('note-modal').remove()">Close</button><button class="btn-cancel" onclick="copyNote()">Copy to clipboard</button><button class="btn-copy" onclick="sendModalToObsidian()">Send to Obsidian ↗</button></div>
+    <div class="modal-foot">
+      <button class="btn-cancel" onclick="document.getElementById('note-modal').remove()">Close</button>
+      <button class="btn-cancel" onclick="copyNote()">Copy to clipboard</button>
+      <button class="btn-copy" onclick="openInObsidian(document.getElementById('note-modal')._title,document.getElementById('note-modal')._content)">Open in Obsidian ↗</button>
+    </div>
   </div>`;
   document.body.appendChild(m);
   m._content=content;
