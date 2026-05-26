@@ -423,12 +423,12 @@ async function doSearch(){
   const ph=S.phases[S.activePhase];
   const sys=`You are an academic research assistant for an EPFL EMBA SIP thesis "Where Should Faction Play?" applying RBV, Dynamic Capabilities, and the Market Opportunity Navigator (Gruber) to help The Faction Collective transition from seasonal to year-round operations.
 Return ONLY a valid JSON array of 7 objects. No markdown, no preamble.
-Each object: {"title":"full title","authors":"Last, F.","year":2020,"journal":"Journal","citations":100,"abstract":"1 sentence only","type":"empirical|review|theoretical|case-study","themes":["T1"],"sipPhase":1,"sipRelevance":"1 sentence why relevant to Faction","quoteHint":"section and page hint","doi":"10.XXXX/XXXXX","url":"https://doi.org/10.XXXX/XXXXX"}
+Each object: {"title":"full title","authors":"Last, F.","year":2020,"journal":"Journal","citations":100,"abstract":"1 sentence only","type":"empirical|review|theoretical|case-study","themes":["T1"],"sipPhase":1,"sipRelevance":"1 sentence why relevant to Faction","quoteHint":"section and page hint","doi":"10.XXXX/XXXXX"}
 CRITICAL RULES:
-- Only include papers you are highly confident exist and are real published works
-- Every paper MUST have a real DOI starting with "10." — no empty doi fields
-- Set url to "https://doi.org/" + the doi value
-- If you are not sure a paper exists, omit it and replace with one you are certain about
+- Only include papers you are 100% certain exist as real published academic works
+- Only include well-known, highly cited papers — do not invent or guess titles
+- doi can be empty string "" if uncertain, but title/authors/year/journal must be accurate
+- If unsure about any paper, replace it with a classic foundational paper you are certain about
 Constraints: ${yr?'year>='+yr:'any year'}, ${ci?'citations>='+ci:'any citations'}, types: ${types.join(',')||'any'}.
 Phase: ${ph.label} — ${ph.sub}. Context: ${ctxTerms||'strategic management'}.`;
   try{
@@ -476,8 +476,8 @@ function card(p,i){
       <button class="abtn ${inZ?'ab-done':'ab-z'}" onclick="saveZ(${i})">${inZ?'✓ Zotero':'+ Zotero'}</button>
       <button class="abtn ${inO?'ab-done':'ab-o'}" onclick="genNote(${i})">${inO?'✓ Note':'+ Note'}</button>
     </div>
-    <div class="rtitle">${p.url?`<a href="${esc(p.url)}" target="_blank" style="color:inherit;text-decoration:none;" title="Open paper ↗">${esc(p.title)}</a>`:esc(p.title)}</div>
-    <div class="rmeta">${esc(p.authors)} · ${p.year} · ${esc(p.journal)} · ${p.citations} citations${p.doi?` · <a href="https://doi.org/${esc(p.doi)}" target="_blank" style="color:var(--ink3);font-size:10px;">DOI ↗</a>`:' · <span style="color:#c0392b;font-size:10px;">⚠ no DOI</span>'}</div>
+    <div class="rtitle"><a href="${scholarUrl(p)}" target="_blank" style="color:inherit;text-decoration:none;" title="Search on Google Scholar ↗">${esc(p.title)}</a></div>
+    <div class="rmeta">${esc(p.authors)} · ${p.year} · ${esc(p.journal)} · ${p.citations} citations · <a href="${scholarUrl(p)}" target="_blank" style="color:var(--ink3);font-size:10px;">Scholar ↗</a></div>
     <div class="rabstract">${esc(p.abstract)}</div>
     <div class="rrel"><div class="rrel-lbl">SIP relevance</div><div class="rrel-text">${esc(p.sipRelevance||'—')}</div></div>
     <div class="rquote"><div class="rquote-lbl">Where to find the key quote</div><div class="rquote-text">${esc(p.quoteHint||'—')}</div></div>
@@ -541,7 +541,7 @@ Quote Hint: ${p.quoteHint}
 DOI: ${p.doi}
 
 Include:
-1. YAML frontmatter: title, authors, year, journal, doi, url (${p.url||''}), zotero_key, date_added (${new Date().toISOString().slice(0,10)}), tags (#status/inbox #method/${p.type} #theory/ #domain/ #sip/phase${p.sipPhase})
+1. YAML frontmatter: title, authors, year, journal, doi (${p.doi||''}), scholar_url (https://scholar.google.com/scholar?q=${encodeURIComponent(p.title+' '+p.authors.split(/[,&]/)[0].trim()+' '+p.year)}), date_added (${new Date().toISOString().slice(0,10)}), tags (#status/inbox #method/${p.type} #theory/ #domain/ #sip/phase${p.sipPhase})
 2. ## Core Argument — 2 sentences
 3. ## Key Findings — 3 bullets
 4. ## Methodology
@@ -634,6 +634,7 @@ async function sendModalToObsidian(){
   else{checkObsidianConn();toast('Push failed — trust cert first');}
 }
 function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function scholarUrl(p){return 'https://scholar.google.com/scholar?q='+encodeURIComponent(p.title+' '+p.authors.split(/[,&]/)[0].trim()+' '+p.year);}
 function toast(msg){const el=document.getElementById('toast');el.textContent=msg;el.classList.add('show');setTimeout(()=>el.classList.remove('show'),2200);}
 
 document.getElementById('qinput').addEventListener('keydown',e=>{if(e.key==='Enter')doSearch();});
