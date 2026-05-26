@@ -416,42 +416,73 @@ async function doSearch(){
   const btn=document.getElementById('sbtn');
   btn.disabled=true;btn.textContent='Searching…';
   document.getElementById('main').innerHTML=`<div class="loading"><span class="spin"></span>Searching — applying SIP context…</div>`;
-  const ctxTerms=[...S.activeCtx].map(k=>ctxMap[k]||'').filter(Boolean).join('; ');
-  const types=[...document.querySelectorAll('.fchip.on')].map(c=>c.textContent.toLowerCase());
+  const ctxTerms=[...S.activeCtx].map(k=>ctxMap[k]||'').filter(Boolean).join(' ');
   const yr=document.getElementById('fy').value;
   const ci=document.getElementById('fc').value;
   const ph=S.phases[S.activePhase];
-  const sys=`You are an academic research assistant for an EPFL EMBA SIP thesis "Where Should Faction Play?" applying RBV, Dynamic Capabilities, and the Market Opportunity Navigator (Gruber) to help The Faction Collective transition from seasonal to year-round operations.
-Return ONLY a valid JSON array of 7 objects. No markdown, no preamble.
-Each object: {"title":"full title","authors":"Last, F.","year":2020,"journal":"Journal","citations":100,"abstract":"1 sentence only","type":"empirical|review|theoretical|case-study","themes":["T1"],"sipPhase":1,"sipRelevance":"1 sentence why relevant to Faction","quoteHint":"section and page hint","doi":"10.XXXX/XXXXX"}
-CRITICAL RULES:
-- Only include papers you are 100% certain exist as real published academic works
-- Only include well-known, highly cited papers — do not invent or guess titles
-- doi can be empty string "" if uncertain, but title/authors/year/journal must be accurate
-- If unsure about any paper, replace it with a classic foundational paper you are certain about
-Constraints: ${yr?'year>='+yr:'any year'}, ${ci?'citations>='+ci:'any citations'}, types: ${types.join(',')||'any'}.
-Phase: ${ph.label} — ${ph.sub}. Context: ${ctxTerms||'strategic management'}.`;
+
   try{
-    const res=await fetch('https://api.anthropic.com/v1/messages',{
+    // ── Step 1: Fetch REAL papers from Semantic Scholar ──────────────────────
+    document.getElementById('main').innerHTML=`<div class="loading"><span class="spin"></span>Fetching real papers from Semantic Scholar…</div>`;
+    const ssQuery=encodeURIComponent(raw+' '+ctxTerms.split(';')[0]);
+    const ssFields='title,authors,year,abstract,citationCount,externalIds,url,openAccessPdf,publicationVenue';
+    const ssParams=new URLSearchParams({query:raw+' '+ctxTerms.slice(0,60),fields:ssFields,limit:20});
+    if(yr)ssParams.set('year',yr+'-');
+    const ssRes=await fetch(`https://api.semanticscholar.org/graph/v1/paper/search?${ssParams}`);
+    if(!ssRes.ok)throw new Error('Semantic Scholar error: '+ssRes.status);
+    const ssData=await ssRes.json();
+    let papers=(ssData.data||[]).filter(p=>p.title&&p.year&&p.abstract);
+    // Apply citation filter
+    if(ci)papers=papers.filter(p=>(p.citationCount||0)>=parseInt(ci));
+    papers=papers.slice(0,10);
+    if(!papers.length){
+      document.getElementById('main').innerHTML=`<div class="empty"><em>No results</em>Try a broader query.</div>`;
+      btn.disabled=false;btn.textContent='Search ↗';return;
+    }
+
+    // ── Step 2: Ask Claude to analyse SIP relevance of REAL papers ───────────
+    document.getElementById('main').innerHTML=`<div class="loading"><span class="spin"></span>Analysing relevance to Faction thesis…</div>`;
+    const paperList=papers.map((p,i)=>`[${i}] "${p.title}" — ${(p.authors||[]).map(a=>a.name).join(', ')} (${p.year})\nAbstract: ${(p.abstract||'').slice(0,300)}`).join('\n\n');
+    const sys=`You are a research assistant for an EPFL EMBA SIP thesis "Where Should Faction Play?" applying RBV, Dynamic Capabilities, and MON (Gruber) to help The Faction Collective transition from seasonal to year-round operations.
+Given real papers below, return ONLY a valid JSON array. No markdown, no preamble.
+Each object: {"index":0,"type":"empirical|review|theoretical|case-study","themes":["T1"],"sipPhase":1,"sipRelevance":"1 sentence","quoteHint":"where to find key insight"}`;
+    const claudeRes=await fetch('https://api.anthropic.com/v1/messages',{
       method:'POST',
       headers:{'Content-Type':'application/json','x-api-key':API_KEY,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
-      body:JSON.stringify({model:'claude-opus-4-5',max_tokens:8000,system:sys,messages:[{role:'user',content:`Find 7 academic papers on: ${raw}`}]})
+      body:JSON.stringify({model:'claude-opus-4-5',max_tokens:4000,system:sys,messages:[{role:'user',content:`Phase: ${ph.label} — ${ph.sub}\n\nPapers:\n${paperList}`}]})
     });
-    const data=await res.json();
-    if(!res.ok){
-      const errMsg=data.error?.message||data.type||`HTTP ${res.status}`;
-      document.getElementById('main').innerHTML=`<div class="empty"><em>${res.status===401?'Invalid API key':'API error'}</em>${esc(errMsg)}</div>`;
-      btn.disabled=false;btn.textContent='Search ↗';return;
-    }
-    const txt=data.content?.find(b=>b.type==='text')?.text||'';
-    if(!txt){
-      document.getElementById('main').innerHTML=`<div class="empty"><em>Empty response</em>Try again.</div>`;
-      btn.disabled=false;btn.textContent='Search ↗';return;
-    }
-    // Extract JSON — handle fenced or bare
+    const claudeData=await claudeRes.json();
+    if(!claudeRes.ok)throw new Error(claudeData.error?.message||`Claude error ${claudeRes.status}`);
+    const txt=claudeData.content?.find(b=>b.type==='text')?.text||'[]';
     const match=txt.match(/```(?:json)?\s*([\s\S]*?)```/)||[null,txt];
-    S.results=JSON.parse(match[1].trim());
-    if(!Array.isArray(S.results))S.results=[];
+    const analysis=JSON.parse(match[1].trim());
+    const analysisMap=Object.fromEntries((Array.isArray(analysis)?analysis:[]).map(a=>[a.index,a]));
+
+    // ── Step 3: Merge real paper data with Claude's analysis ─────────────────
+    S.results=papers.map((p,i)=>{
+      const a=analysisMap[i]||{};
+      const doi=p.externalIds?.DOI||'';
+      const pdfUrl=p.openAccessPdf?.url||'';
+      const ssUrl=p.url||`https://www.semanticscholar.org/search?q=${encodeURIComponent(p.title)}`;
+      return {
+        title:p.title,
+        authors:(p.authors||[]).map(a=>a.name).join(', '),
+        year:p.year,
+        journal:p.publicationVenue?.name||'',
+        citations:p.citationCount||0,
+        abstract:p.abstract||'',
+        doi,
+        url: pdfUrl || (doi?`https://doi.org/${doi}`:ssUrl),
+        ssUrl,
+        pdfUrl,
+        type:a.type||'review',
+        themes:a.themes||[],
+        sipPhase:a.sipPhase||ph.label.replace('Phase ',''),
+        sipRelevance:a.sipRelevance||'',
+        quoteHint:a.quoteHint||'',
+      };
+    });
+
     S.count+=S.results.length;
     document.getElementById('pill-cnt').textContent=S.count+' papers indexed';
     renderResults();
@@ -476,8 +507,8 @@ function card(p,i){
       <button class="abtn ${inZ?'ab-done':'ab-z'}" onclick="saveZ(${i})">${inZ?'✓ Zotero':'+ Zotero'}</button>
       <button class="abtn ${inO?'ab-done':'ab-o'}" onclick="genNote(${i})">${inO?'✓ Note':'+ Note'}</button>
     </div>
-    <div class="rtitle"><a href="${scholarUrl(p)}" target="_blank" style="color:inherit;text-decoration:none;" title="Search on Google Scholar ↗">${esc(p.title)}</a></div>
-    <div class="rmeta">${esc(p.authors)} · ${p.year} · ${esc(p.journal)} · ${p.citations} citations · <a href="${scholarUrl(p)}" target="_blank" style="color:var(--ink3);font-size:10px;">Scholar ↗</a></div>
+    <div class="rtitle"><a href="${esc(p.url||p.ssUrl)}" target="_blank" style="color:inherit;text-decoration:none;">${esc(p.title)}</a></div>
+    <div class="rmeta">${esc(p.authors)} · ${p.year} · ${esc(p.journal||'—')} · ${p.citations} citations · <a href="${esc(p.ssUrl)}" target="_blank" style="color:var(--ink3);font-size:10px;">Semantic Scholar ↗</a>${p.pdfUrl?` · <a href="${esc(p.pdfUrl)}" target="_blank" style="color:var(--green);font-size:10px;">PDF ↗</a>`:''}</div>
     <div class="rabstract">${esc(p.abstract)}</div>
     <div class="rrel"><div class="rrel-lbl">SIP relevance</div><div class="rrel-text">${esc(p.sipRelevance||'—')}</div></div>
     <div class="rquote"><div class="rquote-lbl">Where to find the key quote</div><div class="rquote-text">${esc(p.quoteHint||'—')}</div></div>
@@ -541,7 +572,7 @@ Quote Hint: ${p.quoteHint}
 DOI: ${p.doi}
 
 Include:
-1. YAML frontmatter: title, authors, year, journal, doi (${p.doi||''}), scholar_url (https://scholar.google.com/scholar?q=${encodeURIComponent(p.title+' '+p.authors.split(/[,&]/)[0].trim()+' '+p.year)}), date_added (${new Date().toISOString().slice(0,10)}), tags (#status/inbox #method/${p.type} #theory/ #domain/ #sip/phase${p.sipPhase})
+1. YAML frontmatter: title, authors, year, journal, doi (${p.doi||''}), url (${p.url||''}), semantic_scholar (${p.ssUrl||''}), pdf (${p.pdfUrl||''}), date_added (${new Date().toISOString().slice(0,10)}), tags (#status/inbox #method/${p.type} #theory/ #domain/ #sip/phase${p.sipPhase})
 2. ## Core Argument — 2 sentences
 3. ## Key Findings — 3 bullets
 4. ## Methodology
