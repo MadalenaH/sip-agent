@@ -423,10 +423,14 @@ async function doSearch(){
   const ph=S.phases[S.activePhase];
   const sys=`You are an academic research assistant for an EPFL EMBA SIP thesis "Where Should Faction Play?" applying RBV, Dynamic Capabilities, and the Market Opportunity Navigator (Gruber) to help The Faction Collective transition from seasonal to year-round operations.
 Return ONLY a valid JSON array of 7 objects. No markdown, no preamble.
-Each object: {"title":"full title","authors":"Last, F.","year":2020,"journal":"Journal","citations":100,"abstract":"1 sentence only","type":"empirical|review|theoretical|case-study","themes":["T1"],"sipPhase":1,"sipRelevance":"1 sentence why relevant to Faction","quoteHint":"section and page hint","doi":""}
+Each object: {"title":"full title","authors":"Last, F.","year":2020,"journal":"Journal","citations":100,"abstract":"1 sentence only","type":"empirical|review|theoretical|case-study","themes":["T1"],"sipPhase":1,"sipRelevance":"1 sentence why relevant to Faction","quoteHint":"section and page hint","doi":"10.XXXX/XXXXX","url":"https://doi.org/10.XXXX/XXXXX"}
+CRITICAL RULES:
+- Only include papers you are highly confident exist and are real published works
+- Every paper MUST have a real DOI starting with "10." — no empty doi fields
+- Set url to "https://doi.org/" + the doi value
+- If you are not sure a paper exists, omit it and replace with one you are certain about
 Constraints: ${yr?'year>='+yr:'any year'}, ${ci?'citations>='+ci:'any citations'}, types: ${types.join(',')||'any'}.
-Phase: ${ph.label} — ${ph.sub}. Context: ${ctxTerms||'strategic management'}.
-Real citable papers only.`;
+Phase: ${ph.label} — ${ph.sub}. Context: ${ctxTerms||'strategic management'}.`;
   try{
     const res=await fetch('https://api.anthropic.com/v1/messages',{
       method:'POST',
@@ -472,8 +476,8 @@ function card(p,i){
       <button class="abtn ${inZ?'ab-done':'ab-z'}" onclick="saveZ(${i})">${inZ?'✓ Zotero':'+ Zotero'}</button>
       <button class="abtn ${inO?'ab-done':'ab-o'}" onclick="genNote(${i})">${inO?'✓ Note':'+ Note'}</button>
     </div>
-    <div class="rtitle">${esc(p.title)}</div>
-    <div class="rmeta">${esc(p.authors)} · ${p.year} · ${esc(p.journal)} · ${p.citations} citations</div>
+    <div class="rtitle">${p.url?`<a href="${esc(p.url)}" target="_blank" style="color:inherit;text-decoration:none;" title="Open paper ↗">${esc(p.title)}</a>`:esc(p.title)}</div>
+    <div class="rmeta">${esc(p.authors)} · ${p.year} · ${esc(p.journal)} · ${p.citations} citations${p.doi?` · <a href="https://doi.org/${esc(p.doi)}" target="_blank" style="color:var(--ink3);font-size:10px;">DOI ↗</a>`:' · <span style="color:#c0392b;font-size:10px;">⚠ no DOI</span>'}</div>
     <div class="rabstract">${esc(p.abstract)}</div>
     <div class="rrel"><div class="rrel-lbl">SIP relevance</div><div class="rrel-text">${esc(p.sipRelevance||'—')}</div></div>
     <div class="rquote"><div class="rquote-lbl">Where to find the key quote</div><div class="rquote-text">${esc(p.quoteHint||'—')}</div></div>
@@ -481,7 +485,6 @@ function card(p,i){
       <span class="tag ${tcls}">${p.type}</span>
       <span class="tag tag-p">Phase ${p.sipPhase||'?'}</span>
       ${p.themes.map(t=>`<span class="tag">${esc(t)}</span>`).join('')}
-      ${p.doi?'<span class="tag">DOI</span>':''}
     </div>
   </div>`;
 }
@@ -501,6 +504,7 @@ async function saveZ(i){
       publicationTitle:p.journal,
       date:String(p.year),
       DOI:p.doi||'',
+      url:p.url||'',
       extra:`Citations: ${p.citations}\nSIP Relevance: ${p.sipRelevance}`,
       collections:ZOTERO_COLLECTION_KEY?[ZOTERO_COLLECTION_KEY]:[],
       tags:p.themes.map(t=>({tag:t})).concat([{tag:'sip/phase'+p.sipPhase},{tag:'status/inbox'}])
@@ -537,7 +541,7 @@ Quote Hint: ${p.quoteHint}
 DOI: ${p.doi}
 
 Include:
-1. YAML frontmatter: title, authors, year, journal, doi, zotero_key, date_added (${new Date().toISOString().slice(0,10)}), tags (#status/inbox #method/${p.type} #theory/ #domain/ #sip/phase${p.sipPhase})
+1. YAML frontmatter: title, authors, year, journal, doi, url (${p.url||''}), zotero_key, date_added (${new Date().toISOString().slice(0,10)}), tags (#status/inbox #method/${p.type} #theory/ #domain/ #sip/phase${p.sipPhase})
 2. ## Core Argument — 2 sentences
 3. ## Key Findings — 3 bullets
 4. ## Methodology
